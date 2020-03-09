@@ -26,3 +26,8 @@ hs_err_pid*
 *.iml
 target/
 .idea/
+
+# tmp
+news.mv.db
+news.trace.db
+	

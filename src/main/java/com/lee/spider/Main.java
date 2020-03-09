@@ -6,20 +6,17 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.select.Elements;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Array;
+import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.sql.*;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 /**
  * Description:
@@ -28,52 +25,133 @@ import java.util.Set;
  * Time: 10:08
  */
 public class Main {
-    public static void main(String[] args) throws IOException {
-        String rootURL = "http://sina.cn";
+    public static void main(String[] args) throws IOException, URISyntaxException {
+        try {
+            String jdbcUrl = "jdbc:h2:file:c:/tasks/project/spider/news";
+            Connection connection = DriverManager.getConnection(jdbcUrl, "root", "root");
 
-        CloseableHttpClient httpclient = HttpClients.createDefault();
-        HttpGet httpGet = new HttpGet("http://sina.cn");
-        httpGet.setHeader("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36");
-        // 用于存放未处理的链接
-        ArrayList<String> unHandleLinks = new ArrayList<>();
-        // 存放处理过的
-        Set<String> handledLinks = new HashSet<>();
+            while (true) {
+                ArrayList<String> unProcessedLinks = queryLinksFromDataBase(connection, "select * from LINKS_TO_BE_PROCESSED");
+                if (unProcessedLinks.isEmpty()) {
+                    break;
+                }
 
-        // 使用过的放入处理过的set
-        unHandleLinks.add(rootURL);
-        while (!unHandleLinks.isEmpty()) {
-            try {
-                // 开始处理，从后面往前面取
-                String processingLink = unHandleLinks.remove(unHandleLinks.size() - 1);
-                if (handledLinks.contains(processingLink)) {
+                String processingLink = unProcessedLinks.remove(unProcessedLinks.size() - 1);
+                removeLinkFromDB(connection, processingLink, "delete from LINKS_TO_BE_PROCESSED where link = ?");
+                if (isProcessedLink(connection, processingLink)) {
                     continue;
                 }
 
-                httpGet.setURI(URI.create(processingLink));
+                if (isNewsLink(processingLink)) {
+                    Document doc = getHTMLDocument(processingLink);
+                    doc.select("body a").stream().map(link -> link.attr("href")).forEach(link -> {
+                        addLinkToDB(connection, link, "insert into LINKS_TO_BE_PROCESSED values(?)");
+                    });
+                } else {
+                    // 不感兴趣的不处理
+                    // System.out.println("不感兴趣的");
+                }
 
-                CloseableHttpResponse response = httpclient.execute(httpGet);
-                System.out.println(response.getStatusLine());
-                System.out.println(processingLink);
-                HttpEntity entity = response.getEntity();
-
-                // html转成string
-                String content = IOUtils.toString(entity.getContent(), StandardCharsets.UTF_8);
-
-                Document doc = Jsoup.parse(content);
-                Elements links = doc.select("a");
-                // 将读取到的放入到数组中
-                links.forEach(link -> {
-                    String href = link.attr("href");
-                    if (href.contains("news.sina.cn") && !href.contains("passport.sina.cn")) {
-                        unHandleLinks.add(href);
-                    }
-                });
                 // 加入处理过的set池
-                handledLinks.add(processingLink);
-                // System.out.println(unHandleLinks);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+                addLinkToDB(connection, processingLink, "insert into LINKS_ALREADY_PROCESSED values(?)");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private static void removeLinkFromDB(Connection connection, String processingLink, String sql) {
+        PreparedStatement preparedStatement = null;
+        try {
+            preparedStatement = connection.prepareStatement(sql);
+            preparedStatement.setString(1, processingLink);
+            int i = preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void addLinkToDB(Connection connection, String processingLink, String sql) {
+        PreparedStatement preparedStatement = null;
+        try {
+            preparedStatement = connection.prepareStatement(sql);
+            preparedStatement.setString(1, processingLink);
+            int i = preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Document getHTMLDocument(String processingLink) throws IOException {
+        CloseableHttpClient httpclient = HttpClients.createDefault();
+        HttpGet httpGet = new HttpGet(processingLink);
+        httpGet.setHeader("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36");
+        httpGet.setURI(URI.create(processingLink));
+        CloseableHttpResponse response = httpclient.execute(httpGet);
+        System.out.println(response.getStatusLine());
+        System.out.println(processingLink);
+        HttpEntity entity = response.getEntity();
+
+        String content = IOUtils.toString(entity.getContent(), StandardCharsets.UTF_8);
+        return Jsoup.parse(content);
+    }
+
+
+    private static boolean isProcessedLink(Connection connection, String processingLink) {
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        try {
+            preparedStatement = connection.prepareStatement("select * from LINKS_ALREADY_PROCESSED where link = ?");
+            preparedStatement.setString(1, processingLink);
+            resultSet = preparedStatement.executeQuery();
+            return resultSet.next();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (resultSet != null) {
+                try {
+                    resultSet.close();
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            if (preparedStatement != null) {
+                try {
+                    preparedStatement.close();
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
             }
         }
     }
+
+    private static ArrayList<String> queryLinksFromDataBase(Connection connection, String sql) {
+        ArrayList<String> list = new ArrayList<>();
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql);
+             ResultSet resultSet = preparedStatement.executeQuery();) {
+            while (resultSet.next()) {
+                list.add(resultSet.getString(1));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return list;
+    }
+
+    private static boolean isNewsLink(String href) {
+        return href.equals("http://sina.cn") || (href.contains("news.sina.cn") && !href.contains("passport.sina.cn") && isValidURL(href));
+    }
+
+    private static boolean isValidURL(String href) {
+        try {
+            URL url = new URL(href);
+            url.toURI();
+        } catch (MalformedURLException | URISyntaxException e) {
+            return false;
+        }
+        return true;
+    }
+
+
 }
