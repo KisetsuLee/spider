@@ -29,28 +29,29 @@ import java.util.stream.Collectors;
  * Date: 2020-03-09
  * Time: 10:08
  */
-public class Spider {
-    private SpiderDAO spiderDAO = new SpiderDAOImpl("db/mybatis/config.xml");
+public class Spider extends Thread {
+    private SpiderDAO spiderDAO;
 
-    public static void main(String[] args) {
-        try {
-            new Spider().run();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    public Spider(SpiderDAO spiderDAO) {
+        this.spiderDAO = spiderDAO;
     }
 
-    private void run() throws IOException {
-        String processingLink;
-        while ((processingLink = queryOneUnProcessLinksAndDeleteFromDB()) != null) {
-            if (!isProcessedLink(processingLink)) {
-                Document doc = getHTMLDocument(processingLink);
-                addHTMLNewsLinksToDB(doc);
-                if (isNewsPage(doc)) {
-                    fetchNewInfoFromHTMLPageToDB(doc, processingLink);
+    @Override
+    public void run() {
+        try {
+            String processingLink;
+            while ((processingLink = queryOneUnProcessLinksAndDeleteFromDB()) != null) {
+                if (!isProcessedLink(processingLink)) {
+                    Document doc = getHTMLDocument(processingLink);
+                    addHTMLNewsLinksToDB(doc);
+                    if (isNewsPage(doc)) {
+                        fetchNewInfoFromHTMLPageToDB(doc, processingLink);
+                    }
+                    addLinkToProcessedDB(processingLink);
                 }
-                addLinkToProcessedDB(processingLink);
             }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -102,7 +103,7 @@ public class Spider {
         return spiderDAO.selectProcessLink(processingLink) > 0;
     }
 
-    private String queryOneUnProcessLinksAndDeleteFromDB() {
+    private synchronized String queryOneUnProcessLinksAndDeleteFromDB() {
         String link = spiderDAO.selectUnProcessLink();
         if (link != null) {
             spiderDAO.deleteOneUnProcessLink(link);
