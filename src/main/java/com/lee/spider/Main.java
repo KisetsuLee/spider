@@ -8,6 +8,8 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -17,6 +19,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Description:
@@ -25,40 +28,52 @@ import java.util.ArrayList;
  * Time: 10:08
  */
 public class Main {
+
     public static void main(String[] args) throws IOException, URISyntaxException {
         try {
             String jdbcUrl = "jdbc:h2:file:c:/tasks/project/spider/news";
             Connection connection = DriverManager.getConnection(jdbcUrl, "root", "root");
-
-            while (true) {
-                ArrayList<String> unProcessedLinks = queryLinksFromDataBase(connection, "select * from LINKS_TO_BE_PROCESSED");
-                if (unProcessedLinks.isEmpty()) {
-                    break;
-                }
-
-                String processingLink = unProcessedLinks.remove(unProcessedLinks.size() - 1);
+            String processingLink;
+            while ((processingLink = queryOneUnProcessLinksFromDataBase(connection)) != null) {
                 removeLinkFromDB(connection, processingLink, "delete from LINKS_TO_BE_PROCESSED where link = ?");
-                if (isProcessedLink(connection, processingLink)) {
-                    continue;
-                }
-
-                if (isNewsLink(processingLink)) {
+                if (!isProcessedLink(connection, processingLink)) {
                     Document doc = getHTMLDocument(processingLink);
-                    doc.select("body a").stream().map(link -> link.attr("href")).forEach(link -> {
-                        addLinkToDB(connection, link, "insert into LINKS_TO_BE_PROCESSED values(?)");
-                    });
-                } else {
-                    // 不感兴趣的不处理
-                    // System.out.println("不感兴趣的");
+                    addHTMLNewsLinksToDB(connection, doc);
+                    if (isNewsPage(doc)) {
+                        fetchNewInfoFromHTMLPageToDB(connection, doc, processingLink);
+                    }
+                    addLinkToDB(connection, processingLink, "insert into LINKS_ALREADY_PROCESSED values(?)");
                 }
-
-                // 加入处理过的set池
-                addLinkToDB(connection, processingLink, "insert into LINKS_ALREADY_PROCESSED values(?)");
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
+    }
 
+    private static void fetchNewInfoFromHTMLPageToDB(Connection connection, Document doc, String processingLink) throws SQLException {
+        Element article = doc.selectFirst("article.art_box");
+        String title = article.selectFirst("h1").text();
+        String content = article.select(".art_content .art_p").stream().map(Element::text).collect(Collectors.joining("\n"));
+        PreparedStatement preparedStatement = connection.prepareStatement("insert into NEWS (TITLE, CONTENT, URL, CREATED_AT, MODIFIED_AT) values (?, ?, ?, now(), now())");
+        preparedStatement.setString(1, title);
+        System.out.println(title);
+        preparedStatement.setString(2, content);
+        preparedStatement.setString(3, processingLink);
+        preparedStatement.executeUpdate();
+        preparedStatement.close();
+    }
+
+    private static boolean isNewsPage(Document doc) {
+        Elements articles = doc.select("article.art_box");
+        return articles.size() != 0;
+    }
+
+    private static void addHTMLNewsLinksToDB(Connection connection, Document doc) {
+        doc.select("body a").stream().map(link -> link.attr("href")).forEach(link -> {
+            if (isNewsLink(link)) {
+                addLinkToDB(connection, link, "insert into LINKS_TO_BE_PROCESSED values(?)");
+            }
+        });
     }
 
     private static void removeLinkFromDB(Connection connection, String processingLink, String sql) {
@@ -126,17 +141,16 @@ public class Main {
         }
     }
 
-    private static ArrayList<String> queryLinksFromDataBase(Connection connection, String sql) {
-        ArrayList<String> list = new ArrayList<>();
-        try (PreparedStatement preparedStatement = connection.prepareStatement(sql);
+    private static String queryOneUnProcessLinksFromDataBase(Connection connection) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement("select * from LINKS_TO_BE_PROCESSED limit 1");
              ResultSet resultSet = preparedStatement.executeQuery();) {
-            while (resultSet.next()) {
-                list.add(resultSet.getString(1));
+            if (resultSet.next()) {
+                return resultSet.getString(1);
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-        return list;
+        return null;
     }
 
     private static boolean isNewsLink(String href) {
