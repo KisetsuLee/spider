@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 public class Spider extends Thread {
     private SpiderDAO spiderDAO;
 
-    public Spider(SpiderDAO spiderDAO) {
+    Spider(SpiderDAO spiderDAO) {
         this.spiderDAO = spiderDAO;
     }
 
