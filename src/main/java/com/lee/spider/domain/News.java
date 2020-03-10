@@ -1,6 +1,6 @@
 package com.lee.spider.domain;
 
-import java.util.Date;
+import java.time.Instant;
 
 /**
  * Description:
@@ -13,8 +13,11 @@ public class News {
     private String title;
     private String content;
     private String url;
-    private Date create_at;
-    private Date modified_at;
+    private Instant createdAt;
+    private Instant modifiedAt;
+
+    public News() {
+    }
 
     public News(String title, String content, String url) {
         this.title = title;
@@ -52,5 +55,21 @@ public class News {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getModifiedAt() {
+        return modifiedAt;
+    }
+
+    public void setModifiedAt(Instant modifiedAt) {
+        this.modifiedAt = modifiedAt;
     }
 }

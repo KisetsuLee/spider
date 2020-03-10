@@ -1,7 +1,6 @@
 package com.lee.spider;
 
 import com.lee.spider.dao.SpiderDAO;
-import com.lee.spider.dao.SpiderDAOImpl;
 import com.lee.spider.domain.News;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
@@ -32,7 +31,7 @@ import java.util.stream.Collectors;
 public class Spider extends Thread {
     private SpiderDAO spiderDAO;
 
-    public Spider(SpiderDAO spiderDAO) {
+    Spider(SpiderDAO spiderDAO) {
         this.spiderDAO = spiderDAO;
     }
 
