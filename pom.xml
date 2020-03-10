@@ -61,6 +61,13 @@
             <artifactId>mybatis</artifactId>
             <version>3.4.6</version>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/mysql/mysql-connector-java -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.17</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -102,9 +109,9 @@
                 <artifactId>flyway-maven-plugin</artifactId>
                 <version>6.3.0</version>
                 <configuration>
-                    <url>jdbc:h2:file:c:/tasks/project/spider/news</url>
+                    <url>jdbc:mysql://localhost:3306/news?serverTimezone=GMT%2B8&amp;characterEncoding=utf-8</url>
                     <user>root</user>
-                    <password>root</password>
+                    <password>123456</password>
                 </configuration>
                 <dependencies>
                     <dependency>
