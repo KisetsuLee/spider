@@ -4,10 +4,13 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.lee.spider.mock">
     <select id="selectNews" resultType="com.lee.spider.domain.News">
-        select id, title, content, url, created_at, modified_at from NEWS
+        select id, title, content, url, created_at, modified_at
+        from NEWS
+        limit 3000
     </select>
 
     <insert id="insertNews" parameterType="com.lee.spider.domain.News">
-    insert into NEWS (title, content, url, created_at, modified_at) values(#{title}, #{content}, #{url}, #{createdAt}, #{modifiedAt})
+        insert into NEWS (title, content, url, created_at, modified_at)
+        values (#{title}, #{content}, #{url}, #{createdAt}, #{modifiedAt})
     </insert>
 </mapper>

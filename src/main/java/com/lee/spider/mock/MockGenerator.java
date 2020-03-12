@@ -61,8 +61,6 @@ public class MockGenerator {
                 session.rollback();
                 throw new RuntimeException(e);
             }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 }
